@@ -178,7 +178,7 @@ export async function getPendingMesages(): Promise<Message[]> {
       };
     })
   );
-  if (new Date().toISOString().slice(0, 10) === "2024-12-14") {
+  if (new Date().toISOString().slice(0, 10) === "2024-12-15") {
     //Notify all students at ones
     const allStudents = await getAllStudents();
     const { all: validStudents, notFound: notFoundJournal } = await getStudentsForAllNotification(
