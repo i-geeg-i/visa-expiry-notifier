@@ -1,4 +1,4 @@
-import { getAllExpiringDocs } from "../sheets/api";
+import { getAllExpiringDocs, getAllStudents } from "../sheets/api";
 import {
   DAYS_TO_VISA_EXPIRY,
   DAYS_TO_REGISTRATION_EXPIRY,
@@ -6,10 +6,13 @@ import {
 } from "../db/utils";
 import { sequelize, User } from "../db";
 import {
+  actualizeRegistrationMessage,
   expiringMedicalMessage,
   expiringRegistrationMessage,
   expiringVisaMessage,
   katyaNotification,
+  locationOnTheHolidaysMessage,
+  signTheJournalMessage,
 } from "./messages";
 import { User as SheetUser } from "../sheets/user";
 import { Op } from "sequelize";
@@ -61,6 +64,27 @@ async function getStudentsForDoc(users: SheetUser[], type: DocType) {
   };
 }
 
+async function getStudentsForAllNotification(users: SheetUser[]) {
+  // Those are supposed to get notified and haven't been recently notified
+  const all = await User.findAll({
+    where: {
+      telegramUsername: users
+        .filter(({ telegram }) => telegram !== "")
+        .map((user) => user.telegram),
+    },
+  });
+
+  // Those are supposed to get notified but haven't been found in the database
+  const notFound = users.filter((visa) => {
+    const dbUser = all.find((student) => student.telegramUsername === visa.telegram);
+    return dbUser?.telegramChatId == null;
+  });
+  return {
+    all: all.filter((student) => student.telegramChatId != null),
+    notFound,
+  };
+}
+
 async function getStudentsToBeNotified() {
   const { expiringRegistrations, expiringVisas } = await getAllExpiringDocs();
 
@@ -89,6 +113,9 @@ export enum NotificationType {
   VISA = "visa",
   REGISTRATION = "registration",
   MEDICAL = "medical documents",
+  JOURNAL = "journal",
+  LOCATION = "location",
+  ACTUALIZE = "actualize",
 }
 
 interface Message {
@@ -151,6 +178,96 @@ export async function getPendingMesages(): Promise<Message[]> {
       };
     })
   );
+  if (new Date().toISOString().slice(0, 10) === "2024-12-14") {
+    //Notify all students at ones
+    const allStudents = await getAllStudents();
+    const { all: validStudents, notFound: notFoundJournal } = await getStudentsForAllNotification(
+      allStudents
+    ); // Filter users with valid chat IDs
+
+    messages.push(
+      ...validStudents.map((student) => {
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          chat_id: student.telegramChatId!,
+          username: student.telegramUsername,
+          message: signTheJournalMessage,
+          type: NotificationType.JOURNAL,
+        };
+      })
+    );
+    messages.push(
+      ...notFoundJournal.map((student) => {
+        return {
+          chat_id: katyaChatId,
+          username: student.telegram,
+          message: katyaNotification(student, "journal"),
+          type: NotificationType.JOURNAL,
+        };
+      })
+    );
+  }
+
+  if (new Date().toISOString().slice(0, 10) === "2024-12-20") {
+    //Notify all students at ones
+    const allStudents = await getAllStudents();
+    const { all: validStudents, notFound: notFoundJournal } = await getStudentsForAllNotification(
+      allStudents
+    );
+
+    messages.push(
+      ...validStudents.map((student) => {
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          chat_id: student.telegramChatId!,
+          username: student.telegramUsername,
+          message: locationOnTheHolidaysMessage,
+          type: NotificationType.LOCATION,
+        };
+      })
+    );
+    messages.push(
+      ...notFoundJournal.map((student) => {
+        return {
+          chat_id: katyaChatId,
+          username: student.telegram,
+          message: katyaNotification(student, "location"),
+          type: NotificationType.LOCATION,
+        };
+      })
+    );
+  }
+
+  if (new Date().toISOString().slice(0, 10) === "2025-01-05") {
+    //Notify all students at ones
+    const allStudents = await getAllStudents();
+    const { all: validStudents, notFound: notFoundJournal } = await getStudentsForAllNotification(
+      allStudents
+    );
+
+    messages.push(
+      ...validStudents.map((student) => {
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          chat_id: student.telegramChatId!,
+          username: student.telegramUsername,
+          message: actualizeRegistrationMessage,
+          type: NotificationType.ACTUALIZE,
+        };
+      })
+    );
+    messages.push(
+      ...notFoundJournal.map((student) => {
+        return {
+          chat_id: katyaChatId,
+          username: student.telegram,
+          message: katyaNotification(student, "registration actualization"),
+          type: NotificationType.ACTUALIZE,
+        };
+      })
+    );
+  }
+
   messages.push(
     ...notFoundRegistration.map((student) => {
       return {
